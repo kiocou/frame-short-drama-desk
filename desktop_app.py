@@ -8,7 +8,7 @@ import time
 import webbrowser
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
-from tkinter import END, LEFT, RIGHT, X, BooleanVar, StringVar, Tk, messagebox, filedialog
+from tkinter import END, X, BooleanVar, StringVar, Tk, messagebox, filedialog
 from tkinter import ttk
 
 import app as backend

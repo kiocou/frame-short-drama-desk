@@ -11,12 +11,9 @@ import os
 import re
 import subprocess
 import sys
-import threading
-import time
 import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
 
 
 CODE_ROOT = Path(__file__).resolve().parent
