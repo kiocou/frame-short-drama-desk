@@ -1,0 +1,24 @@
+{
+  "name": "frame-short-drama-desk",
+  "private": true,
+  "version": "2.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config vite.config.ts",
+    "build": "tsc --noEmit && vite build --config vite.config.ts",
+    "tauri": "tauri",
+    "smoke": "node scripts/ui-smoke.mjs",
+    "smoke:player": "node scripts/player-layout-smoke.mjs",
+    "smoke:start": "node scripts/start-feedback-smoke.mjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.8.0",
+    "lucide": "^0.468.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.0",
+    "playwright": "^1.61.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  }
+}

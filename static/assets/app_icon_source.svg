@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">FRAME short drama icon</title>
+  <desc id="desc">A dark cinema frame with a warm red play mark and film-strip details.</desc>
+  <defs>
+    <linearGradient id="surface" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#24333d"/>
+      <stop offset="1" stop-color="#10171d"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff8064"/>
+      <stop offset="1" stop-color="#db3f2f"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="24" stdDeviation="24" flood-color="#071015" flood-opacity=".42"/>
+    </filter>
+  </defs>
+  <rect x="48" y="48" width="928" height="928" rx="214" fill="#0b1116" filter="url(#shadow)"/>
+  <rect x="76" y="76" width="872" height="872" rx="188" fill="url(#surface)" stroke="#3c4d58" stroke-width="10"/>
+  <path d="M176 268h672M176 756h672" fill="none" stroke="#536771" stroke-width="14" stroke-linecap="round" opacity=".52"/>
+  <g fill="#71848c" opacity=".75">
+    <rect x="176" y="198" width="58" height="38" rx="12"/>
+    <rect x="274" y="198" width="58" height="38" rx="12"/>
+    <rect x="692" y="198" width="58" height="38" rx="12"/>
+    <rect x="790" y="198" width="58" height="38" rx="12"/>
+    <rect x="176" y="788" width="58" height="38" rx="12"/>
+    <rect x="274" y="788" width="58" height="38" rx="12"/>
+    <rect x="692" y="788" width="58" height="38" rx="12"/>
+    <rect x="790" y="788" width="58" height="38" rx="12"/>
+  </g>
+  <rect x="232" y="300" width="560" height="424" rx="92" fill="#101a20" stroke="#60737b" stroke-width="12"/>
+  <path d="M468 402 676 512 468 622Z" fill="url(#accent)"/>
+  <path d="M452 396 660 506 452 616Z" fill="#ff9b78" opacity=".18"/>
+  <circle cx="512" cy="512" r="232" fill="none" stroke="#e1513d" stroke-width="8" stroke-dasharray="10 28" opacity=".45"/>
+  <path d="M184 884h656" stroke="#df4b39" stroke-width="12" stroke-linecap="round" opacity=".9"/>
+</svg>

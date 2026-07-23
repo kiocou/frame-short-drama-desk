@@ -1,0 +1,50 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+.superpowers/
+.claude/
+venv/
+env/
+
+# Local config / secrets
+.env
+*.local
+key.txt
+
+# Runtime outputs
+/src/
+*.mp4
+*.m4s
+*.log
+
+# Build outputs
+build/
+dist/
+ui-dist/
+node_modules/
+src-tauri/target/
+ffmpeg.exe
+uploads/
+covers/
+APK分析/
+插件/
+lossless_decompiled/
+*.spec.bak
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# PyInstaller generated files can be rebuilt locally
+*.manifest
+
+# Local runtime config
+config.json
+desktop_tasks.json
+.claude/plans/myagents/
