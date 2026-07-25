@@ -41,6 +41,6 @@
     "active": true,
     "targets": ["nsis"],
     "icon": ["../static/assets/app_icon.ico"],
-    "resources": ["../dist/tauri_bridge", "../插件", "../ffmpeg.exe"]
+    "resources": ["../dist/tauri_bridge/**/*", "../插件/*", "../ffmpeg.exe"]
   }
 }
