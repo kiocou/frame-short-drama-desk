@@ -1,0 +1,23 @@
+# Normalize line endings so Git stops warning about LF<->CRLF churn on the
+# working copy. Python and JS sources are checked out with LF on all platforms;
+# Windows-only scripts keep CRLF because that is what PowerShell expects.
+
+* text=auto eol=lf
+
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets — never touch line endings.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.webp binary
+*.avif binary
+*.gif binary
+*.mp4 binary
+*.m4s binary
+*.exe binary
+*.dll binary
+*.lock binary

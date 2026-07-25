@@ -1408,7 +1408,7 @@ function Lt() {
     const a = Number(String(e.episodes || "").match(/\d+/)?.[0] || 1), n = String(e.title || i);
     s.tasks = [...s.tasks.filter((o2) => !(o2._placeholder && String(o2.series_id || "") === i)), { title: n, series_title: n, episode: 0, episode_total: a, id: `pending:${i}`, series_id: i, source_url: String(e.source_url || ""), cover_url: String(e.cover_url || ""), cover_path: String(e.cover_path || ""), status: "\u7B49\u5F85", url: "", local_path: "", merge_status: "", merge_progress: 0, msg: "\u6B63\u5728\u89E3\u6790\u5168\u96C6\u5E76\u5199\u5165\u4E0B\u8F7D\u961F\u5217\u2026", _placeholder: true }], s.view = "tasks", m();
     const o = await S("enqueue", { raw: i, item: e });
-    o?.errors?.length && window.alert(o.errors.join("\n")), await $();
+    o?.errors?.length && window.alert(o.errors.join("\n")), await $(), Number(o?.added || 0) > 0 && !s.snapshot.running && await le("start");
   })), document.querySelectorAll(".poster img").forEach((t) => t.addEventListener("error", () => {
     t.closest(".poster")?.classList.remove("has-cover"), t.remove();
   }, { once: true })), document.querySelectorAll("input").forEach((t) => t.addEventListener("keydown", (e) => {
@@ -1431,7 +1431,8 @@ async function le(t) {
       s.notice = "\u8BF7\u5148\u7C98\u8D34\u5206\u4EAB\u94FE\u63A5\u6216\u77ED\u5267 ID";
       return;
     }
-    await S("enqueue", { raw: e }), s.view = "tasks", await $();
+    const i = await S("enqueue", { raw: e });
+    s.view = "tasks", await $(), Number(i?.added || 0) > 0 && !s.snapshot.running && await le("start");
     return;
   }
   if (t === "start") {

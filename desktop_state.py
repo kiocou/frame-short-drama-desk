@@ -66,3 +66,32 @@ def load_task_records(path: Path) -> tuple[list[dict], str]:
             task["status"] = "等待"
             task["msg"] = "上次任务中断，等待继续"
     return payload, ""
+
+
+def merge_new_waiting_tasks(
+    disk_tasks: list[dict], in_memory: list[dict]
+) -> tuple[list[dict], int]:
+    """Fold newly-enqueued waiting tasks from disk into the running worker.
+
+    The worker keeps an in-memory task list while it runs; tasks enqueued from
+    the UI during that window only exist on disk. This merges any disk task
+    whose id is not already in memory into the in-memory list, without
+    disturbing tasks that are currently downloading. Returns the (possibly
+    extended) in-memory list and the number of tasks appended.
+    """
+    if not disk_tasks:
+        return in_memory, 0
+    seen = {str(task.get("id")) for task in in_memory if task.get("id") is not None}
+    appended = 0
+    for task in disk_tasks:
+        task_id = str(task.get("id") or "")
+        if not task_id or task_id in seen:
+            continue
+        # Only pull in tasks that are actually waiting to run. Skip anything the
+        # disk thinks is mid-flight — the worker already owns those in memory.
+        if task.get("status") not in {"等待"}:
+            continue
+        in_memory.append(task)
+        seen.add(task_id)
+        appended += 1
+    return in_memory, appended

@@ -36,16 +36,24 @@ def modules():
 
 
 def ensure_runtime_config() -> Path:
-    """Seed the writable AppData config once from the packaged default."""
+    """Seed the writable AppData config once from the packaged empty template.
+
+    Never copy a real ``config.json`` — that file may hold a developer's live
+    device_id/install_id and would leak into the installer. The shipped
+    template (``config.example.json``) only ever contains blank fields; the
+    AppData copy is populated from the UI.
+    """
     configured = str(os.getenv("DUANJU_CONFIG_PATH") or "").strip()
     target = Path(os.path.expandvars(configured)).expanduser() if configured else ROOT / "config.json"
     if target.exists():
         return target
-    default = CODE_ROOT / "config.json"
-    if not default.exists():
+    default = CODE_ROOT / "config.example.json"
+    fallback = CODE_ROOT / "config.json"
+    source = default if default.exists() else fallback
+    if not source.exists():
         return target
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(default, target)
+    shutil.copy2(source, target)
     return target
 
 
@@ -403,7 +411,11 @@ def retry(payload):
 def clear(_payload):
     if RUNNING_FILE.exists():
         raise RuntimeError("下载进行中，请先暂停")
-    _, downloads, _ = modules()
+    _, downloads, desktop_state = modules()
+    tasks, _ = load_tasks(desktop_state)
+    # Drop per-episode parts that were never merged, so .parts does not keep
+    # accumulating leftovers from abandoned series.
+    downloads.delete_episode_files(tasks)
     save_tasks(downloads, [])
     return {"cleared": True}
 
@@ -434,6 +446,9 @@ def delete_series(payload):
         raise ValueError("缺少短剧标识")
     _, downloads, desktop_state = modules()
     tasks, _ = load_tasks(desktop_state)
+    # Remove this series' episode parts before dropping the records.
+    doomed = [task for index, task in enumerate(tasks) if task_series_key(task, index) == key]
+    downloads.delete_episode_files(doomed)
     remaining = [task for index, task in enumerate(tasks) if task_series_key(task, index) != key]
     removed = len(tasks) - len(remaining)
     if removed:
@@ -447,7 +462,19 @@ def save_settings(payload):
         if key in payload:
             current[key] = payload[key]
     if current.get("download_dir"):
-        current["download_dir"] = str(Path(os.path.expandvars(str(current["download_dir"]))).expanduser().resolve())
+        resolved = Path(os.path.expandvars(str(current["download_dir"]))).expanduser().resolve()
+        # Reject a bare drive root (e.g. "C:\\") so a mistyped save location
+        # cannot turn the whole system drive into a media scratch folder.
+        if len(resolved.parents) < 1 or resolved.parent == resolved.parent.parent:
+            raise ValueError("下载目录不能是磁盘根目录，请选择一个子文件夹")
+        current["download_dir"] = str(resolved)
+    if "download_workers" in current:
+        try:
+            raw = current["download_workers"]
+            workers = int(raw) if raw not in (None, "") else 4
+            current["download_workers"] = min(8, max(2, workers))
+        except (TypeError, ValueError):
+            current["download_workers"] = 4
     (ROOT / "config.json").write_text(json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"saved": True, "config": current}
 
@@ -464,16 +491,28 @@ def worker():
             while not PAUSE_FILE.exists():
                 claimed = desktop_state.claim_waiting_tasks(tasks, workers)
                 if not claimed:
+                    # No waiting task in memory — but the UI may have enqueued
+                    # more while we were busy. Fold those in before giving up.
+                    disk_tasks, _ = load_tasks(desktop_state)
+                    tasks, appended = desktop_state.merge_new_waiting_tasks(disk_tasks, tasks)
+                    if appended:
+                        continue
                     break
                 futures = {pool.submit(download_one, task, app, downloads, root): task for task in claimed}
                 for future in as_completed(futures):
                     future.result()
                 save_tasks(downloads, tasks)
+                # Pick up tasks enqueued from the UI during this batch so a
+                # running engine does not require a manual restart.
+                disk_tasks, _ = load_tasks(desktop_state)
+                tasks, _ = desktop_state.merge_new_waiting_tasks(disk_tasks, tasks)
         if not PAUSE_FILE.exists() and config.get("auto_merge", True):
             series_ids = {str(task.get("series_id")) for task in tasks if task.get("series_id")}
+            ffprobe_bin = downloads.get_ffprobe_binary()
+            ffmpeg_bin = app.parser_module.get_ffmpeg_binary()
             for series_id in series_ids:
                 if downloads.series_ready(tasks, series_id):
-                    output = downloads.merge_series(tasks, series_id, root, app.parser_module.get_ffmpeg_binary())
+                    output = downloads.merge_series(tasks, series_id, root, ffmpeg_bin, ffprobe_bin=ffprobe_bin)
                     desktop_state.complete_series_merge(tasks, series_id, output)
         save_tasks(downloads, tasks)
     finally:
@@ -488,6 +527,7 @@ def download_one(task, app, downloads, root):
         if local is None:
             raise RuntimeError("分集视频未保存到本地")
         task["url"] = result.get("url") or result.get("download_url") or ""
+        task["local_filename"] = str(result.get("local_filename") or Path(local).name)
         task["local_path"] = str(local); task["status"] = "完成"; task["msg"] = "完成"
     except Exception as exc:
         task["status"] = "失败"; task["msg"] = str(exc)

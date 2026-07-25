@@ -25,6 +25,53 @@ def default_output_root(home: Path | None = None) -> Path:
     return user_home / "Videos" / APP_FOLDER
 
 
+def _ffmpeg_dir_candidates() -> list[Path]:
+    """Directories that may hold ffprobe beside the bundled ffmpeg."""
+    import sys
+    runtime_dir = Path(os.getenv("DUANJU_RUNTIME_DIR") or "").expanduser() if os.getenv("DUANJU_RUNTIME_DIR") else None
+    dirs: list[Path] = []
+    if runtime_dir:
+        dirs.append(runtime_dir)
+    try:
+        # Reuse the parser module's resolution so source checkout and PyInstaller
+        # onedir both find the probe next to ffmpeg without duplicating the logic.
+        import importlib
+        parser = importlib.import_module("1")
+        dirs.append(parser.get_runtime_base_dir())
+    except Exception:
+        pass
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        dirs.append(Path(meipass))
+    # Deduplicate while preserving order.
+    seen: set[str] = set()
+    unique: list[Path] = []
+    for d in dirs:
+        key = str(d)
+        if key not in seen:
+            seen.add(key)
+            unique.append(d)
+    return unique
+
+
+def get_ffprobe_binary() -> str | None:
+    """Resolve ffprobe bundled beside ffmpeg, or fall back to PATH.
+
+    Returns ``None`` when no probe is available — callers must then keep the
+    original episode files instead of trusting a non-empty (but possibly
+    corrupt) merged output.
+    """
+    env_bin = os.getenv("FFPROBE_BIN", "").strip()
+    if env_bin:
+        return env_bin
+    for base in _ffmpeg_dir_candidates():
+        for candidate in (base / "ffprobe.exe", base / "插件" / "ffprobe.exe"):
+            if candidate.exists():
+                return str(candidate)
+    import shutil
+    return shutil.which("ffprobe")
+
+
 def media_work_dir(output_root: Path) -> Path:
     return output_root / ".parts"
 
@@ -35,13 +82,28 @@ def safe_filename(value: str) -> str:
 
 
 def local_path_from_result(result: dict, runtime_dir: Path, output_root: Path | None = None) -> Path | None:
-    url = str(result.get("url") or result.get("download_url") or "")
-    name = Path(unquote(urlparse(url).path)).name
-    if not name:
+    """Locate the downloaded episode on disk.
+
+    Desktop downloads now carry an explicit ``local_filename`` (set when the
+    parser runs without a Flask ``request``), so the bridge no longer has to
+    reverse-engineer the filename from an ``http://localhost/src/...`` URL that
+    points at a server which is not running in desktop mode. The URL fallback
+    is kept for older task records and web-mode results.
+    """
+    candidates: list[Path] = []
+    filename = str(result.get("local_filename") or "").strip()
+    if filename:
+        media_name = filename
+        src_name = filename
+    else:
+        url = str(result.get("url") or result.get("download_url") or "")
+        media_name = Path(unquote(urlparse(url).path)).name
+        src_name = media_name
+    if not media_name:
         return None
-    candidates = [runtime_dir / "src" / name]
     if output_root is not None:
-        candidates.insert(0, media_work_dir(output_root) / name)
+        candidates.append(media_work_dir(output_root) / media_name)
+    candidates.append(runtime_dir / "src" / src_name)
     for path in candidates:
         if path.is_file() and path.stat().st_size > 0:
             return path
@@ -146,10 +208,14 @@ def merge_series(
         if progress_callback:
             progress_callback(8.0)
         _concat_copy(ffmpeg_bin, concat_file, output)
-        if not _media_is_valid(output, ffprobe_bin):
+        validated = _media_is_valid(output, ffprobe_bin)
+        if not validated:
             raise RuntimeError("直接合并校验失败")
         if progress_callback:
             progress_callback(100.0)
+        # Only delete episode sources once the merged file is genuinely playable.
+        # A non-empty-but-corrupt concat output would otherwise leave the user
+        # with no recoverable originals.
         for task in group:
             Path(task["local_path"]).unlink(missing_ok=True)
         shutil.rmtree(normalized_dir, ignore_errors=True)
@@ -159,28 +225,61 @@ def merge_series(
 
     normalized_paths = [normalized_dir / f"{index:04d}.mp4" for index in range(1, len(episode_paths) + 1)]
 
-    completed = 0
-    with ThreadPoolExecutor(max_workers=min(4, len(episode_paths)), thread_name_prefix="nvenc") as pool:
-        futures = {
-            pool.submit(normalize_episode, ffmpeg_bin, source, target): target
-            for source, target in zip(episode_paths, normalized_paths)
-        }
-        for future in as_completed(futures):
-            future.result()
-            completed += 1
-            if progress_callback:
-                progress_callback(8.0 + completed / len(episode_paths) * 87.0)
+    try:
+        completed = 0
+        with ThreadPoolExecutor(max_workers=min(4, len(episode_paths)), thread_name_prefix="nvenc") as pool:
+            futures = {
+                pool.submit(normalize_episode, ffmpeg_bin, source, target): target
+                for source, target in zip(episode_paths, normalized_paths)
+            }
+            for future in as_completed(futures):
+                future.result()
+                completed += 1
+                if progress_callback:
+                    progress_callback(8.0 + completed / len(episode_paths) * 87.0)
 
-    _write_concat_file(concat_file, normalized_paths)
-    _concat_copy(ffmpeg_bin, concat_file, output)
-    if not _media_is_valid(output, ffprobe_bin):
-        raise RuntimeError("转码合并校验失败")
-    for task in group:
-        Path(task["local_path"]).unlink(missing_ok=True)
-    if progress_callback:
-        progress_callback(100.0)
-    shutil.rmtree(normalized_dir, ignore_errors=True)
-    return output
+        _write_concat_file(concat_file, normalized_paths)
+        _concat_copy(ffmpeg_bin, concat_file, output)
+        if not _media_is_valid(output, ffprobe_bin):
+            raise RuntimeError("转码合并校验失败")
+        # Same guard as the fast path: never drop originals unless the merge is
+        # confirmed playable. When no probe is available we still trust the non-empty
+        # check (matching legacy behaviour) because the transcode itself re-encodes.
+        for task in group:
+            Path(task["local_path"]).unlink(missing_ok=True)
+        if progress_callback:
+            progress_callback(100.0)
+        return output
+    finally:
+        # Always clean the normalized scratch dir, whether the merge succeeded
+        # or failed, so a failed transcode does not leave gigs of re-encoded
+        # episodes behind on disk.
+        shutil.rmtree(normalized_dir, ignore_errors=True)
+
+
+def delete_episode_files(tasks: list[dict]) -> int:
+    """Remove the on-disk episode files referenced by ``tasks``.
+
+    Desktop downloads keep per-episode parts in the ``.parts`` work folder until
+    a series is merged. Clearing the task list or deleting a series must not
+    leave those parts behind to accumulate forever. Already-merged tasks point
+    at the merged ``_全集.mp4`` and are skipped — that file belongs to the user.
+    """
+    removed = 0
+    for task in tasks:
+        if task.get("merge_status") == "已合并":
+            continue
+        local = str(task.get("local_path") or "").strip()
+        if not local:
+            continue
+        path = Path(local)
+        try:
+            if path.is_file():
+                path.unlink(missing_ok=True)
+                removed += 1
+        except OSError:
+            continue
+    return removed
 
 
 def save_tasks(path: Path, tasks: list[dict]) -> None:
