@@ -902,6 +902,11 @@ async function setPlayerFullscreen(t) {
   await setNativePlayerFullscreen(false);
   s.playerFullscreen = false, syncPlayerFullscreenClass();
 }
+// Hide the webview's default right-click context menu everywhere. This is a
+// desktop workspace, not a web page, so the browser menu (back/reload/view
+// source) is noise. Ctrl+C / Ctrl+V keyboard shortcuts are unaffected —
+// preventDefault on "contextmenu" only suppresses the menu popup itself.
+document.addEventListener("contextmenu", (e) => e.preventDefault());
 document.addEventListener("fullscreenchange", () => {
   if (document.fullscreenElement) {
     s.playerFullscreen = true;

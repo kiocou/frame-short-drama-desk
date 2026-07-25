@@ -106,6 +106,91 @@ class AppSmokeTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+    def test_concurrent_download_uses_range_requests_when_supported(self):
+        """A Range-enabled CDN is fetched with parallel segments and stitched."""
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        import threading
+        parser = app.parser_module
+        payload = (bytes(range(256)) * 256) * 64  # ~4 MiB so 4 segments clear the 512 KiB floor
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_HEAD(self):
+                self.send_response(200)
+                self.send_header("Accept-Ranges", "bytes")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+
+            def do_GET(self):
+                range_header = self.headers.get("Range")
+                if range_header and range_header.startswith("bytes="):
+                    spec = range_header[len("bytes="):].split("-")
+                    start = int(spec[0])
+                    end = int(spec[1]) if len(spec) > 1 and spec[1] else len(payload) - 1
+                    chunk = payload[start:end + 1]
+                    self.send_response(206)
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{len(payload)}")
+                    self.send_header("Content-Length", str(len(chunk)))
+                    self.end_headers()
+                    self.wfile.write(chunk)
+                else:
+                    self.send_response(200)
+                    self.send_header("Content-Length", str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+
+            def log_message(self, *_args):
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            url = f"http://127.0.0.1:{server.server_port}/video.mp4"
+            with tempfile.TemporaryDirectory() as tmp:
+                target = Path(tmp) / "downloaded.mp4"
+                used_parallel = parser.download_video_to_file_concurrent(url, target, segments=4)
+                self.assertTrue(used_parallel)
+                self.assertTrue(target.is_file())
+                self.assertEqual(target.read_bytes(), payload)
+                # No leftover part files.
+                self.assertFalse(any(p.name.startswith("downloaded.mp4.part") for p in Path(tmp).iterdir()))
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_concurrent_download_falls_back_when_range_unsupported(self):
+        """A server without Range support returns False so the caller retries elsewhere."""
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        import threading
+        parser = app.parser_module
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_HEAD(self):
+                self.send_response(200)
+                self.send_header("Content-Length", "1024")
+                self.end_headers()
+
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *_args):
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            url = f"http://127.0.0.1:{server.server_port}/video.mp4"
+            with tempfile.TemporaryDirectory() as tmp:
+                target = Path(tmp) / "downloaded.mp4"
+                used_parallel = parser.download_video_to_file_concurrent(url, target, segments=4)
+                self.assertFalse(used_parallel)
+                self.assertFalse(target.exists())
+        finally:
+            server.shutdown()
+            server.server_close()
+
     def test_downloads_default_to_user_videos_folder(self):
         with mock.patch.dict(os.environ, {"DUANJU_DOWNLOAD_DIR": ""}):
             root = desktop_downloads.default_output_root(Path("C:/Users/TestUser"))

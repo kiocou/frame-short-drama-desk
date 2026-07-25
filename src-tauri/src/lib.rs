@@ -15,12 +15,23 @@ fn project_root() -> PathBuf {
     std::env::current_dir().unwrap_or(manifest_root)
 }
 
-fn bridge_command(root: &Path) -> Result<(PathBuf, Vec<String>), String> {
-    let script = root.join("tauri_bridge.py");
-    let bundled = root.join("tauri_bridge.exe");
-    if bundled.exists() {
-        return Ok((bundled, Vec::new()));
+fn bridge_command(root: &Path) -> Result<(PathBuf, Vec<String>, PathBuf), String> {
+    // Bundled PyInstaller exe (preferred): shipped under dist/tauri_bridge/.
+    // The onedir layout puts its _internal/ deps beside the exe, so we must run
+    // it from that directory rather than the resource root.
+    let bundled_layout = root.join("dist").join("tauri_bridge").join("tauri_bridge.exe");
+    if bundled_layout.exists() {
+        let cwd = bundled_layout.parent().unwrap_or(root).to_path_buf();
+        return Ok((bundled_layout, Vec::new(), cwd));
     }
+    // Flat layout (older onedir or globbed resources).
+    let bundled_flat = root.join("tauri_bridge.exe");
+    if bundled_flat.exists() {
+        let cwd = bundled_flat.parent().unwrap_or(root).to_path_buf();
+        return Ok((bundled_flat, Vec::new(), cwd));
+    }
+    // Dev / source checkout: run tauri_bridge.py with a Python interpreter.
+    let script = root.join("tauri_bridge.py");
     let venv_python = root.join(".venv").join("Scripts").join("python.exe");
     let python = if venv_python.exists() {
         venv_python
@@ -30,16 +41,16 @@ fn bridge_command(root: &Path) -> Result<(PathBuf, Vec<String>), String> {
     if !script.exists() {
         return Err(format!("Bridge not found: {}", script.display()));
     }
-    Ok((python, vec![script.to_string_lossy().into_owned()]))
+    Ok((python, vec![script.to_string_lossy().into_owned()], root.to_path_buf()))
 }
 
 fn run_bridge(root: PathBuf, data_dir: PathBuf, action: String, payload: Value) -> Result<Value, String> {
-    let (program, mut args) = bridge_command(&root)?;
+    let (program, mut args, cwd) = bridge_command(&root)?;
     args.push(action);
     let mut command = Command::new(program);
     command
         .args(args)
-        .current_dir(&root)
+        .current_dir(&cwd)
         .env("FRAME_DATA_DIR", &data_dir)
         .env("DUANJU_CONFIG_PATH", data_dir.join("config.json"))
         .stdin(Stdio::piped())
@@ -71,7 +82,12 @@ async fn bridge(app: tauri::AppHandle, action: String, payload: Value) -> Result
     let root = resource_root
         .into_iter()
         .flat_map(|path| [path.clone(), path.join("_up_")])
-        .find(|path| path.join("tauri_bridge.py").exists() || path.join("tauri_bridge.exe").exists())
+        .find(|path| {
+            path.join("tauri_bridge.py").exists()
+                || path.join("tauri_bridge.exe").exists()
+                || path.join("dist").join("tauri_bridge").join("tauri_bridge.exe").exists()
+                || path.join("dist").join("tauri_bridge").join("tauri_bridge.py").exists()
+        })
         .unwrap_or(source_root);
     let data_dir = app.path().app_data_dir().unwrap_or_else(|_| root.clone());
     std::fs::create_dir_all(&data_dir).map_err(|error| error.to_string())?;

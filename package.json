@@ -1,11 +1,12 @@
 {
   "name": "frame-short-drama-desk",
   "private": true,
-  "version": "2.2.0",
+  "version": "2.2.1",
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.ts",
     "build": "tsc --noEmit && vite build --config vite.config.ts",
+    "build:bridge": ".venv\\Scripts\\python.exe -m PyInstaller --clean --noconfirm tauri_bridge.spec",
     "tauri": "tauri",
     "smoke": "node scripts/ui-smoke.mjs",
     "smoke:player": "node scripts/player-layout-smoke.mjs",

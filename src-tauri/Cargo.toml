@@ -1,6 +1,6 @@
 [package]
 name = "frame-short-drama-desk"
-version = "2.2.0"
+version = "2.2.1"
 description = "FRAME short drama desktop workspace"
 authors = ["FRAME"]
 edition = "2021"
