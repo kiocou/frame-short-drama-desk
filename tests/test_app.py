@@ -14,10 +14,121 @@ import tkinter as tk
 
 
 class AppSmokeTests(unittest.TestCase):
+    def test_ffmpeg_resolves_from_bundled_plugin_directory(self):
+        parser = app.parser_module
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_dir = Path(tmp)
+            bundled = runtime_dir / "插件" / "ffmpeg.exe"
+            bundled.parent.mkdir()
+            bundled.write_bytes(b"ffmpeg")
+
+            with mock.patch.object(parser, "get_runtime_base_dir", return_value=runtime_dir):
+                self.assertEqual(parser.get_ffmpeg_binary(), str(bundled))
+
+    def test_video_download_falls_back_when_ffmpeg_cannot_open_https(self):
+        import subprocess
+
+        parser = app.parser_module
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def iter_content(self, chunk_size):
+                self.chunk_size = chunk_size
+                yield b"encrypted-video"
+
+        class FakeSession:
+            def get(self, *args, **kwargs):
+                self.args = args
+                self.kwargs = kwargs
+                return FakeResponse()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            calls = []
+
+            def run_ffmpeg(command, **kwargs):
+                calls.append(command)
+                input_value = command[command.index("-i") + 1]
+                if str(input_value).startswith("https://"):
+                    raise subprocess.CalledProcessError(1, command, stderr="TLS failed")
+                self.assertEqual(Path(input_value).read_bytes(), b"encrypted-video")
+                Path(command[-1]).write_bytes(b"playable-video")
+
+            with mock.patch.object(parser, "get_media_work_dir", return_value=work_dir), \
+                 mock.patch.object(parser, "get_ffmpeg_binary", return_value="ffmpeg"), \
+                 mock.patch.object(parser, "get_http_session", return_value=FakeSession()), \
+                 mock.patch.object(parser.subprocess, "run", side_effect=run_ffmpeg):
+                result = parser.stream_copy_video_with_ffmpeg(
+                    None, "https://cdn.example/video.mp4", b"0123456789abcdef",
+                )
+
+            output = work_dir / Path(result).name
+            self.assertEqual(output.read_bytes(), b"playable-video")
+            self.assertGreaterEqual(len(calls), 2)
+            self.assertFalse(any(path.name.endswith(".source.mp4") for path in work_dir.iterdir()))
+
+    def test_parser_http_requests_ignore_unavailable_proxy_environment(self):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        parser = app.parser_module
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"direct")
+
+            def log_message(self, *_args):
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        server_thread = __import__("threading").Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+        dead_proxy = "http://127.0.0.1:1"
+        proxy_environment = {
+            "HTTP_PROXY": dead_proxy,
+            "HTTPS_PROXY": dead_proxy,
+            "ALL_PROXY": dead_proxy,
+            "NO_PROXY": "",
+        }
+        try:
+            with mock.patch.dict(os.environ, proxy_environment, clear=False), \
+                 ThreadPoolExecutor(max_workers=1) as pool:
+                response = pool.submit(
+                    parser.curl_request,
+                    f"http://127.0.0.1:{server.server_port}/video-model",
+                    {}, None, 2,
+                ).result(timeout=3)
+            self.assertEqual(response, b"direct")
+        finally:
+            server.shutdown()
+            server.server_close()
+
     def test_downloads_default_to_user_videos_folder(self):
         with mock.patch.dict(os.environ, {"DUANJU_DOWNLOAD_DIR": ""}):
             root = desktop_downloads.default_output_root(Path("C:/Users/TestUser"))
         self.assertEqual(root, Path("C:/Users/TestUser/Videos/短剧下载"))
+
+    def test_save_settings_rejects_drive_root_and_clamps_workers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_root = Path(tmp)
+            with mock.patch.object(tauri_bridge, "ROOT", data_root):
+                # A sub-folder is accepted and workers are clamped to [2, 8].
+                result = tauri_bridge.save_settings({
+                    "download_dir": str(data_root / "media"),
+                    "download_workers": 32,
+                })
+                self.assertTrue(result["saved"])
+                self.assertEqual(result["config"]["download_dir"], str((data_root / "media").resolve()))
+                self.assertEqual(result["config"]["download_workers"], 8)
+                # A bare drive root must be rejected.
+                with self.assertRaises(ValueError):
+                    tauri_bridge.save_settings({"download_dir": "C:\\"})
+                # Below-minimum workers clamp up to 2.
+                result = tauri_bridge.save_settings({"download_workers": 0})
+                self.assertEqual(result["config"]["download_workers"], 2)
 
     def test_local_media_is_found_in_output_work_folder(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -27,6 +138,21 @@ class AppSmokeTests(unittest.TestCase):
             media = work_dir / "episode.mp4"
             media.write_bytes(b"video")
             result = {"url": "http://127.0.0.1/src/episode.mp4"}
+            self.assertEqual(
+                desktop_downloads.local_path_from_result(result, Path(tmp), output_root),
+                media,
+            )
+
+    def test_local_filename_is_preferred_over_url(self):
+        """Desktop results carry local_filename so the bridge need not parse the URL."""
+        with tempfile.TemporaryDirectory() as tmp:
+            output_root = Path(tmp) / "Videos" / "短剧下载"
+            work_dir = desktop_downloads.media_work_dir(output_root)
+            work_dir.mkdir(parents=True)
+            media = work_dir / "video_123.mp4"
+            media.write_bytes(b"video")
+            # No url at all; only the desktop-provided filename is present.
+            result = {"local_filename": "video_123.mp4"}
             self.assertEqual(
                 desktop_downloads.local_path_from_result(result, Path(tmp), output_root),
                 media,
@@ -81,6 +207,25 @@ class AppSmokeTests(unittest.TestCase):
         self.assertEqual(tasks[2]["status"], "排队中")
         self.assertEqual(tasks[1]["status"], "失败")
         self.assertEqual(tasks[3]["status"], "等待")
+
+    def test_running_worker_picks_up_newly_enqueued_tasks_from_disk(self):
+        """Tasks enqueued while the engine is running must join the in-memory list."""
+        # In-memory snapshot the worker started with: one mid-flight, one done.
+        in_memory = [
+            {"id": "1", "status": "下载中", "msg": "正在解析并下载"},
+            {"id": "2", "status": "完成", "msg": "完成"},
+        ]
+        # Disk now has a brand-new waiting task plus the in-flight one (unchanged).
+        disk = [
+            {"id": "1", "status": "下载中", "msg": "正在解析并下载"},
+            {"id": "3", "status": "等待", "msg": "等待下载"},
+        ]
+        merged, appended = desktop_state.merge_new_waiting_tasks(disk, in_memory)
+        self.assertEqual(appended, 1)
+        self.assertEqual([task["id"] for task in merged], ["1", "2", "3"])
+        # The in-flight task must not be duplicated or reset.
+        self.assertEqual([task["status"] for task in merged if task["id"] == "1"], ["下载中"])
+        self.assertEqual(merged[-1]["status"], "等待")
 
     def test_invalid_task_store_is_preserved_and_reported(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -137,6 +282,46 @@ class AppSmokeTests(unittest.TestCase):
             self.assertEqual(result, {"removed": 2})
             self.assertEqual(warning, "")
             self.assertEqual([task["id"] for task in remaining], ["3"])
+
+    def test_delete_series_removes_episode_parts_but_keeps_merged_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            task_file = Path(tmp) / "desktop_tasks.json"
+            running_file = Path(tmp) / ".frame_running"
+            parts_dir = Path(tmp) / ".parts"
+            parts_dir.mkdir()
+            episode_part = parts_dir / "video_ep1.mp4"
+            episode_part.write_bytes(b"episode")
+            merged_file = Path(tmp) / "merged" / "剧集_全集.mp4"
+            merged_file.parent.mkdir()
+            merged_file.write_bytes(b"merged")
+            desktop_downloads.save_tasks(task_file, [
+                {"series_id": "series-1", "id": "1", "local_path": str(episode_part), "merge_status": ""},
+                {"series_id": "series-1", "id": "2", "local_path": str(merged_file), "merge_status": "已合并"},
+            ])
+            with mock.patch.object(tauri_bridge, "TASK_FILE", task_file), \
+                 mock.patch.object(tauri_bridge, "RUNNING_FILE", running_file), \
+                 mock.patch.object(tauri_bridge, "modules", return_value=(None, desktop_downloads, desktop_state)):
+                tauri_bridge.delete_series({"series_key": "series:series-1"})
+            # Unmerged episode part is gone; the user's merged collection is kept.
+            self.assertFalse(episode_part.exists())
+            self.assertTrue(merged_file.exists())
+
+    def test_clear_removes_unmerged_episode_parts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            task_file = Path(tmp) / "desktop_tasks.json"
+            running_file = Path(tmp) / ".frame_running"
+            parts_dir = Path(tmp) / ".parts"
+            parts_dir.mkdir()
+            part = parts_dir / "video_leftover.mp4"
+            part.write_bytes(b"episode")
+            desktop_downloads.save_tasks(task_file, [
+                {"id": "1", "local_path": str(part), "merge_status": ""},
+            ])
+            with mock.patch.object(tauri_bridge, "TASK_FILE", task_file), \
+                 mock.patch.object(tauri_bridge, "RUNNING_FILE", running_file), \
+                 mock.patch.object(tauri_bridge, "modules", return_value=(None, desktop_downloads, desktop_state)):
+                tauri_bridge.clear({})
+            self.assertFalse(part.exists())
 
     def test_desktop_workspace_has_four_human_focused_pages(self):
         root = tk.Tk()
@@ -251,6 +436,76 @@ class AppSmokeTests(unittest.TestCase):
                 output = desktop_downloads.merge_series(tasks, "series", root / "output", ffmpeg, progress_callback=progress.append)
             self.assertTrue(output.is_file() and output.stat().st_size > 0)
             self.assertEqual(progress[-1], 100.0)
+
+    def test_corrupt_merge_keeps_original_episodes_when_probe_available(self):
+        """A merge output the probe rejects must not delete source episodes.
+
+        The fast concat path and the transcode-then-concat path both probe the
+        final file; if ffprobe rejects it, the original episodes must survive
+        so the user is not left with a corrupt merge and no recoverable sources.
+        """
+        import shutil
+        ffmpeg = shutil.which("ffmpeg") or str(Path(__file__).resolve().parents[1] / "ffmpeg.exe")
+        ffprobe = desktop_downloads.get_ffprobe_binary()
+        if not Path(ffmpeg).exists():
+            self.skipTest("ffmpeg not found")
+        if not ffprobe or not Path(ffprobe).exists():
+            self.skipTest("ffprobe not available")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = root / "1.mp4"
+            second = root / "2.mp4"
+            first.write_bytes(b"not-a-real-mp4-original-1")
+            second.write_bytes(b"not-a-real-mp4-original-2")
+            tasks = [
+                {"series_id": "series", "series_title": "测试片", "episode": 1, "status": "完成", "local_path": str(first)},
+                {"series_id": "series", "series_title": "测试片", "episode": 2, "status": "完成", "local_path": str(second)},
+            ]
+
+            def fake_concat(_bin, _concat_file, output):
+                # Simulate ffmpeg writing a non-empty file that ffprobe will reject.
+                output.write_bytes(b"corrupt-but-nonempty-merged-output")
+
+            def fake_normalize(_bin, _source, target):
+                target.write_bytes(b"corrupt-but-nonempty-normalized")
+
+            with mock.patch.object(desktop_downloads, "_concat_copy", side_effect=fake_concat), \
+                 mock.patch.object(desktop_downloads, "normalize_episode", side_effect=fake_normalize):
+                with self.assertRaises(Exception):
+                    desktop_downloads.merge_series(tasks, "series", root / "output", ffmpeg, ffprobe_bin=ffprobe)
+            # Originals must survive because the probe rejected both merge attempts.
+            self.assertTrue(first.is_file() and first.read_bytes().startswith(b"not-a-real-mp4-original-1"))
+            self.assertTrue(second.is_file() and second.read_bytes().startswith(b"not-a-real-mp4-original-2"))
+
+    def test_failed_transcode_cleans_up_normalized_scratch_dir(self):
+        """A failed NVENC/x264 pass must not leave re-encoded episodes on disk."""
+        import shutil
+        ffmpeg = shutil.which("ffmpeg") or str(Path(__file__).resolve().parents[1] / "ffmpeg.exe")
+        ffprobe = desktop_downloads.get_ffprobe_binary()
+        if not Path(ffmpeg).exists():
+            self.skipTest("ffmpeg not found")
+        if not ffprobe or not Path(ffprobe).exists():
+            self.skipTest("ffprobe not available")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = root / "1.mp4"
+            first.write_bytes(b"not-a-real-mp4-original-1")
+            tasks = [
+                {"series_id": "series", "series_title": "测试片", "episode": 1, "status": "完成", "local_path": str(first)},
+            ]
+
+            def fake_concat(_bin, _concat_file, output):
+                output.write_bytes(b"corrupt-but-nonempty")
+
+            def boom(_bin, _source, _target):
+                raise RuntimeError("nvenc exploded")
+
+            with mock.patch.object(desktop_downloads, "_concat_copy", side_effect=fake_concat), \
+                 mock.patch.object(desktop_downloads, "normalize_episode", side_effect=boom):
+                with self.assertRaises(Exception):
+                    desktop_downloads.merge_series(tasks, "series", root / "output", ffmpeg, ffprobe_bin=ffprobe)
+            # The .normalized scratch folder must be gone after the failure.
+            self.assertFalse(any(path.name == ".normalized" for path in root.rglob(".normalized")))
 
     def test_four_download_workers_run_concurrently(self):
         import threading

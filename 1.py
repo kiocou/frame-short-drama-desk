@@ -202,12 +202,21 @@ DEFAULT_TIMEOUT = 30
 FFMPEG_BIN = "ffmpeg"
 VIDEO_TTL_SECONDS = 300
 _HTTP_LOCAL = threading.local()
+# Desktop downloads (request is None) skip the web URL round-trip: the bridge
+# only needs the local filename to locate the file, not an http://localhost URL
+# pointing at a Flask server that is not running. The streaming helper records
+# the filename here so the desktop caller can read it without parsing the URL.
+_DESKTOP_FILENAME_LOCAL = threading.local()
 
 
 def get_http_session() -> requests.Session:
     session = getattr(_HTTP_LOCAL, "session", None)
     if session is None:
         session = requests.Session()
+        # The desktop process may inherit a stale local proxy from its launcher.
+        # Video APIs must stay usable even when that proxy is not running.
+        session.trust_env = False
+        session.proxies = {"http": None, "https": None}
         adapter = HTTPAdapter(pool_connections=16, pool_maxsize=16, max_retries=0)
         session.mount("http://", adapter)
         session.mount("https://", adapter)
@@ -220,9 +229,9 @@ def get_ffmpeg_binary() -> str:
     runtime_dir = get_runtime_base_dir()
     candidates = [
         runtime_dir / "ffmpeg.exe",
-        runtime_dir / "??" / "ffmpeg.exe",
+        runtime_dir / "插件" / "ffmpeg.exe",
         Path(getattr(sys, "_MEIPASS", runtime_dir)) / "ffmpeg.exe",
-        Path(getattr(sys, "_MEIPASS", runtime_dir)) / "??" / "ffmpeg.exe",
+        Path(getattr(sys, "_MEIPASS", runtime_dir)) / "插件" / "ffmpeg.exe",
     ]
     for candidate in candidates:
         if candidate.exists():
@@ -520,7 +529,13 @@ def download_and_decrypt_video(
 
                     video_info["data"] = video_data
                     data["video_info"] = video_info
-                    return build_response_payload(video_id, video_model, video_data, best_item)
+                    result = build_response_payload(video_id, video_model, video_data, best_item)
+                    # Surface the bare filename for desktop callers (request is None).
+                    # Web callers ignore this field and keep using the url.
+                    desktop_filename = _DESKTOP_FILENAME_LOCAL.__dict__.pop("filename", "")
+                    if request is None and desktop_filename:
+                        result["local_filename"] = desktop_filename
+                    return result
 
         # retry with new device
         if attempt < max_retries - 1 and video_id:
@@ -567,37 +582,48 @@ def stream_copy_video_with_ffmpeg(
     filename = f"video_{time.time_ns()}.mp4"
     filepath = src_dir / filename
     partial = src_dir / f".{filename}.part.mp4"
+    source = src_dir / f".{filename}.source.mp4"
 
     ffmpeg_bin = get_ffmpeg_binary()
     common = [ffmpeg_bin, "-y", "-hide_banner", "-loglevel", "error"]
     decrypt = ["-decryption_key", content_key.hex()] if content_key else []
-    output_args = ["-i", video_url, "-map", "0:v:0", "-map", "0:a:0?", "-c", "copy", "-movflags", "+faststart", str(partial)]
+    output_args = ["-map", "0:v:0", "-map", "0:a:0?", "-c", "copy", "-movflags", "+faststart", str(partial)]
     robust_input = [
         "-rw_timeout", "120000000", "-reconnect", "1", "-reconnect_streamed", "1",
         "-reconnect_delay_max", "5", "-user_agent", USER_AGENT,
         "-headers", "Referer: https://novel.snssdk.com/\r\n",
     ]
-    commands = [common + robust_input + decrypt + output_args, common + decrypt + output_args]
+    commands = [
+        common + robust_input + decrypt + ["-i", video_url] + output_args,
+        common + decrypt + ["-i", video_url] + output_args,
+    ]
     last_error = None
-    for command in commands:
+    try:
+        for command in commands:
+            partial.unlink(missing_ok=True)
+            try:
+                _run_ffmpeg(command, partial)
+                partial.replace(filepath)
+                break
+            except FileNotFoundError as exc:
+                raise FileNotFoundError(f"FFmpeg executable not found: {ffmpeg_bin}") from exc
+            except (subprocess.CalledProcessError, RuntimeError) as exc:
+                last_error = exc
+        else:
+            download_video_to_file(video_url, source)
+            local_command = common + decrypt + ["-i", str(source)] + output_args
+            try:
+                _run_ffmpeg(local_command, partial)
+                partial.replace(filepath)
+            except FileNotFoundError as exc:
+                raise FileNotFoundError(f"FFmpeg executable not found: {ffmpeg_bin}") from exc
+            except (subprocess.CalledProcessError, RuntimeError) as exc:
+                raise RuntimeError(
+                    f"FFmpeg could not process the downloaded video: {_ffmpeg_error_text(exc)}"
+                ) from exc
+    finally:
         partial.unlink(missing_ok=True)
-        try:
-            subprocess.run(
-                command,
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-            )
-            if not partial.is_file() or partial.stat().st_size == 0:
-                raise RuntimeError("FFmpeg produced an empty media file")
-            partial.replace(filepath)
-            break
-        except (subprocess.CalledProcessError, RuntimeError) as exc:
-            last_error = exc
-    else:
-        partial.unlink(missing_ok=True)
-        raise Exception(f"Failed to stream video with ffmpeg: {last_error}")
+        source.unlink(missing_ok=True)
 
     stream_seconds = time.perf_counter() - stream_start
     print(f"[timing] stream_copy_seconds={stream_seconds:.3f}")
@@ -605,8 +631,55 @@ def stream_copy_video_with_ffmpeg(
     # complete series can be merged.
     if request is not None:
         schedule_video_cleanup(filepath)
+    else:
+        # Desktop mode: expose the bare filename so the bridge can locate the
+        # file directly instead of reverse-engineering it from an http URL.
+        _DESKTOP_FILENAME_LOCAL.__dict__["filename"] = filename
     current_domain = get_current_domain(request)
     return f"{current_domain}/src/{filename}"
+
+
+def _run_ffmpeg(command: List[str], output: Path) -> None:
+    subprocess.run(
+        command,
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+    )
+    if not output.is_file() or output.stat().st_size == 0:
+        raise RuntimeError("FFmpeg produced an empty media file")
+
+
+def _ffmpeg_error_text(error: Exception) -> str:
+    stderr = str(getattr(error, "stderr", "") or "").strip()
+    return stderr or str(error)
+
+
+def download_video_to_file(video_url: str, target: Path) -> None:
+    """Download media with Requests when the bundled FFmpeg TLS stack cannot."""
+    target.unlink(missing_ok=True)
+    try:
+        response = get_http_session().get(
+            video_url,
+            headers={
+                "User-Agent": "com.phoenix.read/71332",
+                "Referer": "https://novel.snssdk.com/",
+            },
+            timeout=120,
+            stream=True,
+        )
+        response.raise_for_status()
+        with target.open("wb") as output:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    output.write(chunk)
+        if not target.is_file() or target.stat().st_size == 0:
+            raise RuntimeError("Video download produced an empty media file")
+    except Exception:
+        target.unlink(missing_ok=True)
+        raise
 
 
 def download_video_bytes(video_url: str) -> bytes:

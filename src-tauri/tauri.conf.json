@@ -41,6 +41,6 @@
     "active": true,
     "targets": ["nsis"],
     "icon": ["../static/assets/app_icon.ico"],
-    "resources": ["../config.json", "../tauri_bridge.py", "../1.py", "../app.py", "../desktop_downloads.py", "../desktop_state.py", "../liushen", "../插件", "../ffmpeg.exe"]
+    "resources": ["../config.example.json", "../tauri_bridge.py", "../1.py", "../app.py", "../desktop_downloads.py", "../desktop_state.py", "../liushen", "../插件", "../ffmpeg.exe"]
   }
 }
