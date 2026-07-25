@@ -545,3 +545,22 @@ body.player-fullscreen .player-side,
 @keyframes episode-pulse { to { opacity: .45; } }
 @keyframes cover-pulse { to { opacity: .2; transform: scaleX(.45); } }
 @media (max-width: 1120px) { .task-detail-drawer { width: min(620px, calc(100vw - 190px)); } }
+
+/* Non-blocking toast notice (replaces window.alert). Sits above all content. */
+.app-notice { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 9999; display: inline-flex; align-items: center; gap: 9px; max-width: min(560px, calc(100vw - 48px)); padding: 11px 12px 11px 14px; color: #fff; background: rgba(35,46,52,.94); border: 1px solid rgba(255,255,255,.08); border-radius: 11px; box-shadow: 0 18px 48px rgba(10,14,17,.34); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); font-size: 13px; font-weight: 600; line-height: 1.4; animation: notice-in .26s cubic-bezier(.2,.7,.2,1); }
+.app-notice svg { width: 16px; height: 16px; flex: 0 0 16px; }
+.app-notice span { flex: 1 1 auto; min-width: 0; }
+.app-notice.success { background: rgba(49,152,121,.96); }
+.app-notice.danger { background: rgba(198,64,42,.96); }
+.app-notice [data-dismiss-notice] { flex: 0 0 auto; display: grid; place-items: center; width: 22px; height: 22px; margin: 0 -2px 0 2px; color: rgba(255,255,255,.7); background: transparent; border: 0; border-radius: 6px; cursor: pointer; transition: color .15s ease, background .15s ease; }
+.app-notice [data-dismiss-notice]:hover { color: #fff; background: rgba(255,255,255,.12); }
+.app-notice [data-dismiss-notice] svg { width: 13px; height: 13px; }
+@keyframes notice-in { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* Search result card loading / added states. Keeps the user on the search page
+   while a series resolves into the queue instead of jumping to the queue view. */
+.result-card.is-adding { pointer-events: none; opacity: .62; }
+.result-card.is-adding .result-card-add { opacity: 1; transform: scale(1); background: rgba(77,120,196,.92); }
+.result-card.is-added .result-card-add { opacity: 1; transform: scale(1); background: rgba(49,152,121,.92); }
+.result-card.is-added::after { content: "已在队列"; position: absolute; inset: 0 auto auto 0; padding: 4px 10px; color: #fff; background: rgba(49,152,121,.92); border-bottom-right-radius: 10px; font-size: 11px; font-weight: 800; letter-spacing: .02em; }
+.result-card.is-added { border-color: rgba(49,152,121,.4); }

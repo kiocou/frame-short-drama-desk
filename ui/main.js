@@ -857,7 +857,7 @@ const icPanelRight = ["svg", v, [["rect", { width: "18", height: "18", x: "3", y
 const icVolumeX = ["svg", v, [["path", { d: "M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z" }], ["line", { x1: "22", x2: "16", y1: "9", y2: "15" }], ["line", { x1: "16", x2: "22", y1: "9", y2: "15" }]]];
 const icVolume1 = ["svg", v, [["path", { d: "M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z" }], ["path", { d: "M16 9a5 5 0 0 1 0 6" }]]];
 const dt = { Activity: Ie, ArrowUpRight: Oe, Check: Te, ChevronLeft: ze, ChevronRight: We, Film: Pe, FolderOpen: Fe, Fullscreen: Ue, HardDrive: Ve, LayoutDashboard: He, ListVideo: Be, LoaderCircle: Ge, Minus: je, Pause: Ye, Play: Ke, Plus: Je, RotateCcw: Ze, ScanSearch: Xe, ShieldCheck: et, SlidersHorizontal: tt, Square: it, Trash2: at, Volume2: st, Volume1: icVolume1, VolumeX: icVolumeX, SkipBack: icSkipBack, Rewind: icRewind, FastForward: icFastForward, SkipForward: icSkipForward, PanelRight: icPanelRight, X: nt };
-const pt = [{ title: "\u711A\u4E5D\u5DDE\u7B2C\u4E94\u5B63", status: "\u5DF2\u5408\u5E76", merge_status: "\u5DF2\u5408\u5E76", episode_total: 110, series_id: "seed-5", progress: "110 / 110 \u96C6", msg: "\u5168\u96C6\u5DF2\u4FDD\u5B58" }, { title: "\u711A\u4E5D\u5DDE\u7B2C\u56DB\u5B63", status: "\u5DF2\u5408\u5E76", merge_status: "\u5DF2\u5408\u5E76", episode_total: 145, series_id: "seed-4", progress: "145 / 145 \u96C6", msg: "\u5168\u96C6\u5DF2\u4FDD\u5B58" }, { title: "\u711A\u4E5D\u5DDE\u7B2C\u4E09\u5B63", status: "\u5DF2\u5408\u5E76", merge_status: "\u5DF2\u5408\u5E76", episode_total: 83, series_id: "seed-3", progress: "83 / 83 \u96C6", msg: "\u5168\u96C6\u5DF2\u4FDD\u5B58" }], s = { view: "home", tasks: [], search: [], snapshot: { config: {}, output_dir: "", running: false }, starting: false, searching: false, searchVersion: 0, keyword: "\u7A7F\u8D8A", source: "\u7EA2\u679C\u77ED\u5267", category: "\u7A7F\u8D8A", page: "1", notice: "", activeSeries: "", activeEpisode: 0, autoplay: false, detailSeries: "", playerFullscreen: false, playerPanelOpen: false, playbackSpeed: 1 };
+const pt = [{ title: "\u711A\u4E5D\u5DDE\u7B2C\u4E94\u5B63", status: "\u5DF2\u5408\u5E76", merge_status: "\u5DF2\u5408\u5E76", episode_total: 110, series_id: "seed-5", progress: "110 / 110 \u96C6", msg: "\u5168\u96C6\u5DF2\u4FDD\u5B58" }, { title: "\u711A\u4E5D\u5DDE\u7B2C\u56DB\u5B63", status: "\u5DF2\u5408\u5E76", merge_status: "\u5DF2\u5408\u5E76", episode_total: 145, series_id: "seed-4", progress: "145 / 145 \u96C6", msg: "\u5168\u96C6\u5DF2\u4FDD\u5B58" }, { title: "\u711A\u4E5D\u5DDE\u7B2C\u4E09\u5B63", status: "\u5DF2\u5408\u5E76", merge_status: "\u5DF2\u5408\u5E76", episode_total: 83, series_id: "seed-3", progress: "83 / 83 \u96C6", msg: "\u5168\u96C6\u5DF2\u4FDD\u5B58" }], s = { view: "home", tasks: [], search: [], snapshot: { config: {}, output_dir: "", running: false }, starting: false, searching: false, searchVersion: 0, keyword: "\u7A7F\u8D8A", source: "\u7EA2\u679C\u77ED\u5267", category: "\u7A7F\u8D8A", page: "1", notice: "", noticeLevel: "info", addedSeries: new Set(), activeSeries: "", activeEpisode: 0, autoplay: false, detailSeries: "", playerFullscreen: false, playerPanelOpen: false, playbackSpeed: 1 };
 function syncPlayerFullscreenClass() {
   document.body.classList.toggle("player-fullscreen", s.playerFullscreen && s.view === "player");
 }
@@ -1067,7 +1067,7 @@ function ft(t) {
     <section class="workspace">
       <header class="titlebar" data-tauri-drag-region><div class="crumb">FRAME <span>/</span> ${s.view === "home" ? "WORKSPACE" : s.view.toUpperCase()}</div><div class="window-actions"><button data-window="minimize" aria-label="\u6700\u5C0F\u5316"><i data-lucide="minus"></i></button><button data-window="maximize" aria-label="\u6700\u5927\u5316"><i data-lucide="square"></i></button><button data-window="close" aria-label="\u5173\u95ED"><i data-lucide="x"></i></button></div></header>
       <div class="content ${s.view === "player" ? "player-content" : ""}">${t}</div>
-    </section>
+    </section>${s.notice ? `<div class="app-notice ${s.noticeLevel || "info"}" role="status" aria-live="polite"><i data-lucide="${s.noticeLevel === "danger" ? "shield-check" : s.noticeLevel === "success" ? "check" : "activity"}"></i><span>${d(s.notice)}</span><button data-dismiss-notice aria-label="关闭提示" type="button">✕</button></div>` : ""}
   </main>`;
 }
 function _t() {
@@ -1084,7 +1084,7 @@ function St(t, e = 0) {
   return `<div class="table-row" data-task-index="${e}"><div class="title-cell">${I(t, e)}<div><b>${d(t.title || "\u672A\u547D\u540D\u77ED\u5267")}</b><small>${d(t.series_title || t.id || "\u672C\u5730\u4EFB\u52A1")}</small></div></div><span class="status ${a}"><i></i>${i}</span><span class="progress-copy">${Y(t)}</span></div>`;
 }
 function $t() {
-  const t = s.searching ? '<div class="search-loading" role="status" aria-live="polite"><i class="spin" data-lucide="loader-circle"></i><b>\u6B63\u5728\u641C\u7D22\u7247\u5E93</b><span>\u6B63\u5728\u540C\u6B65\u516C\u5F00\u6765\u6E90\u2026</span><div class="loading-track" aria-hidden="true"><i></i></div></div>' : s.search.length ? `<div class="result-grid">${s.search.map((e, i) => `<button class="result-card" data-result-index="${i}"><div class="result-card-cover">${I(e, i)}${e.episodes ? `<span class="result-ep-badge">${d(e.episodes)}</span>` : ""}</div><div class="result-card-body"><b class="result-card-title">${d(e.title || "\u672A\u547D\u540D")}</b><span class="result-card-meta">${d(e.category || e.source || e.author || "")}</span></div><span class="result-card-add" aria-label="\u52A0\u5165\u961F\u5217"><i data-lucide="plus"></i></span></button>`).join("")}</div>` : '<div class="empty-state large"><i data-lucide="scan-search"></i><p>\u8F93\u5165\u6761\u4EF6\u5F00\u59CB\u68C0\u7D22\u3002\u7ED3\u679C\u4F1A\u5728\u8FD9\u91CC\u6309\u6765\u6E90\u5206\u7EC4\u5448\u73B0\u3002</p></div>';
+  const t = s.searching ? '<div class="search-loading" role="status" aria-live="polite"><i class="spin" data-lucide="loader-circle"></i><b>\u6B63\u5728\u641C\u7D22\u7247\u5E93</b><span>\u6B63\u5728\u540C\u6B65\u516C\u5F00\u6765\u6E90\u2026</span><div class="loading-track" aria-hidden="true"><i></i></div></div>' : s.search.length ? `<div class="result-grid">${s.search.map((e, i) => `<button class="result-card${s.addedSeries.has(String(e.drama_id||"")) || s.tasks.some(o=>String(o.series_id||"")===String(e.drama_id||"")) ? " is-added" : ""}" data-result-index="${i}"><div class="result-card-cover">${I(e, i)}${e.episodes ? `<span class="result-ep-badge">${d(e.episodes)}</span>` : ""}</div><div class="result-card-body"><b class="result-card-title">${d(e.title || "\u672A\u547D\u540D")}</b><span class="result-card-meta">${d(e.category || e.source || e.author || "")}</span></div><span class="result-card-add" aria-label="\u52A0\u5165\u961F\u5217"><i data-lucide="plus"></i></span></button>`).join("")}</div>` : '<div class="empty-state large"><i data-lucide="scan-search"></i><p>\u8F93\u5165\u6761\u4EF6\u5F00\u59CB\u68C0\u7D22\u3002\u7ED3\u679C\u4F1A\u5728\u8FD9\u91CC\u6309\u6765\u6E90\u5206\u7EC4\u5448\u73B0\u3002</p></div>';
   return `<div class="view search-view"><div class="page-head reveal"><div><span class="eyebrow">LIBRARY / 02</span><h1>\u7247\u5E93\u641C\u7D22</h1><p>\u805A\u5408\u516C\u5F00\u6765\u6E90\uFF0C\u9009\u62E9\u4E00\u6761\u7ED3\u679C\u540E\u5373\u53EF\u89E3\u6790\u5168\u96C6\u3002</p></div><span class="head-note">${s.searching ? "SYNCING SOURCES" : `${s.search.length} RESULTS`}</span></div><section class="filter-bar reveal delay-1"><label>\u5173\u952E\u8BCD<input id="search-keyword" value="${d(s.keyword)}" /></label><label>\u6765\u6E90<select id="search-source"><option>\u7EA2\u679C\u77ED\u5267</option><option>\u7EA2\u679C\u6F2B\u5267</option><option>\u7231\u5947\u827A\u77ED\u5267</option><option>\u5168\u7F51\u805A\u5408</option></select></label><label>\u5206\u7C7B<input id="search-category" value="${d(s.category)}" /></label><label>\u9875\u7801<input id="search-page" value="${d(s.page)}" /></label><button class="signal ${s.searching ? "is-loading" : ""}" data-action="search" ${s.searching ? "disabled" : ""}><i class="${s.searching ? "spin" : ""}" data-lucide="${s.searching ? "loader-circle" : "scan-search"}"></i>${s.searching ? "\u641C\u7D22\u4E2D" : "\u5F00\u59CB\u641C\u7D22"}</button></section><section class="result-panel search-results reveal delay-2">${t}</section></div>`;
 }
 function Et() {
@@ -1194,6 +1194,20 @@ function At() {
   const t = s.snapshot.config || {};
   return `<div class="view"><div class="page-head reveal"><div><span class="eyebrow">SYSTEM / 05</span><h1>\u7CFB\u7EDF\u8BBE\u7F6E</h1><p>\u672C\u673A\u914D\u7F6E\u53EA\u4FDD\u5B58\u5728\u672C\u5730\uFF0C\u7528\u4E8E\u89E3\u6790\u8EAB\u4EFD\u4E0E\u4E0B\u8F7D\u7B56\u7565\u3002</p></div></div><section class="settings-grid reveal delay-1"><article class="settings-card"><div class="settings-title"><i data-lucide="hard-drive"></i><div><b>\u672C\u5730\u5A92\u4F53</b><small>\u6240\u6709\u5206\u96C6\u548C\u5408\u96C6\u7684\u4FDD\u5B58\u4F4D\u7F6E</small></div></div><div class="path-field"><input id="output-dir" value="${s.snapshot.output_dir || "%USERPROFILE%\\Videos\\\u77ED\u5267\u4E0B\u8F7D"}" /><button class="ghost" data-action="open-output"><i data-lucide="folder-open"></i>\u6253\u5F00</button></div><p class="hint">\u9ED8\u8BA4\u4F7F\u7528 Windows \u7528\u6237 Videos \u76EE\u5F55\uFF0C\u4E0B\u8F7D\u4E2D\u7684\u6587\u4EF6\u4F1A\u653E\u5728\u9690\u85CF\u7684 .parts \u6587\u4EF6\u5939\u3002</p></article><article class="settings-card"><div class="settings-title"><i data-lucide="sliders-horizontal"></i><div><b>\u4EFB\u52A1\u7B56\u7565</b><small>\u63A7\u5236\u901F\u5EA6\u4E0E\u8D44\u6E90\u5360\u7528</small></div></div><label class="setting-line"><span>\u5E76\u53D1\u4E0B\u8F7D</span><select id="workers"><option ${t.download_workers === 2 ? "selected" : ""}>2</option><option ${!t.download_workers || t.download_workers === 4 ? "selected" : ""}>4</option><option ${t.download_workers === 6 ? "selected" : ""}>6</option><option ${t.download_workers === 8 ? "selected" : ""}>8</option></select></label><label class="setting-line toggle-line"><span>\u5B8C\u6210\u540E\u81EA\u52A8\u5408\u5E76</span><input id="auto-merge" type="checkbox" ${t.auto_merge !== false ? "checked" : ""} /><span class="toggle"></span></label><button class="signal save-settings" data-action="save-settings"><i data-lucide="check"></i>\u4FDD\u5B58\u8BBE\u7F6E</button></article></section><section class="identity-card reveal delay-2"><div><span class="eyebrow">PARSER IDENTITY</span><h2>\u89E3\u6790\u8EAB\u4EFD</h2><p>device_id\u3001install_id \u548C\u5E73\u53F0\u4FE1\u606F\u7531 Python \u89E3\u6790\u5668\u8BFB\u53D6\u3002\u4FDD\u7559\u5728\u672C\u673A\uFF0C\u4E0D\u4F1A\u4E0A\u4F20\u5230 UI \u5C42\u3002</p></div><div class="identity-controls"><label>device_id<input id="device-id" value="${d(t.device_id || "")}" placeholder="\u8BBE\u5907 ID" /></label><label>install_id<input id="install-id" value="${d(t.install_id || "")}" placeholder="\u5B89\u88C5 ID" /></label><label>\u5E73\u53F0<select id="platform"><option ${t.platform === "ios" ? "selected" : ""}>ios</option><option ${t.platform !== "ios" ? "selected" : ""}>android</option></select></label><span class="local-badge"><i data-lucide="shield-check"></i>LOCAL ONLY</span></div></section></div>`;
 }
+// Non-blocking toast notice. Replaces the old window.alert calls so the user
+// gets feedback (added N episodes / already in queue / error) without a modal
+// blocking the whole app. Auto-dismisses after a few seconds; the user can also
+// dismiss it manually. Level drives the colour (info/success/danger).
+let _noticeTimer = 0;
+function showNotice(text, level = "info", sticky = false) {
+  s.notice = String(text || ""), s.noticeLevel = level;
+  if (_noticeTimer) { clearTimeout(_noticeTimer); _noticeTimer = 0; }
+  m();
+  if (!sticky && s.notice) {
+    _noticeTimer = setTimeout(() => { _noticeTimer = 0; s.notice = ""; m(); }, 4200);
+  }
+}
+
 function m() {
   const t = s.view === "home" ? _t() : s.view === "search" ? $t() : s.view === "tasks" ? Et() : s.view === "player" ? Nt() : At();
   document.querySelector("#app").innerHTML = ft(t);
@@ -1386,6 +1400,9 @@ function Lt() {
   document.querySelectorAll("[data-view]").forEach((t) => t.addEventListener("click", async () => {
     const e = t.dataset.view || "home";
     e !== "player" && s.playerFullscreen && await setPlayerFullscreen(false), s.view = e, m();
+  })), document.querySelectorAll("[data-dismiss-notice]").forEach((t) => t.addEventListener("click", () => {
+    if (_noticeTimer) { clearTimeout(_noticeTimer); _noticeTimer = 0; }
+    s.notice = "", m();
   })), document.querySelectorAll("[data-window]").forEach((t) => t.addEventListener("click", async () => {
     const e = ue();
     t.dataset.window === "close" && await e.close(), t.dataset.window === "minimize" && await e.minimize(), t.dataset.window === "maximize" && await e.toggleMaximize();
@@ -1410,10 +1427,33 @@ function Lt() {
   })), document.querySelectorAll("[data-result-index]").forEach((t) => t.addEventListener("click", async () => {
     const e = s.search[Number(t.dataset.resultIndex)], i = String(e?.drama_id || "").trim();
     if (!i) return;
-    const a = Number(String(e.episodes || "").match(/\d+/)?.[0] || 1), n = String(e.title || i);
-    s.tasks = [...s.tasks.filter((o2) => !(o2._placeholder && String(o2.series_id || "") === i)), { title: n, series_title: n, episode: 0, episode_total: a, id: `pending:${i}`, series_id: i, source_url: String(e.source_url || ""), cover_url: String(e.cover_url || ""), cover_path: String(e.cover_path || ""), status: "\u7B49\u5F85", url: "", local_path: "", merge_status: "", merge_progress: 0, msg: "\u6B63\u5728\u89E3\u6790\u5168\u96C6\u5E76\u5199\u5165\u4E0B\u8F7D\u961F\u5217\u2026", _placeholder: true }], s.view = "tasks", m();
+    const n = String(e.title || i);
+    // Duplicate guard: if this series is already queued, surface a gentle hint
+    // instead of firing another bridge call that resolves hundreds of episodes
+    // only to add zero. This covers both real tasks and the old placeholder rows.
+    const alreadyQueued = s.addedSeries.has(i) || s.tasks.some((o2) => String(o2.series_id || "") === i || String(o2.id || "") === i || o2.id === `pending:${i}`);
+    if (alreadyQueued) { showNotice(`\u300A${n}\u300B\u5DF2\u5728\u4E0B\u8F7D\u961F\u5217\u4E2D`, "info"); return; }
+    // Loading state on the card so the user sees the click registered even
+    // though we stay on the search page (no jarring view jump).
+    t.classList.add("is-adding");
     const o = await S("enqueue", { raw: i, item: e });
-    o?.errors?.length && window.alert(o.errors.join("\n")), await $(), Number(o?.added || 0) > 0 && !s.snapshot.running && await le("start");
+    t.classList.remove("is-adding");
+    if (o?.errors?.length) {
+      showNotice(`\u300A${n}\u300B\u52A0\u5165\u5931\u8D25\uFF1A${o.errors.join("\uFF1B")}`, "danger");
+      return;
+    }
+    const added = Number(o?.added || 0);
+    if (added > 0) {
+      s.addedSeries.add(i); m();
+      showNotice(`\u5DF2\u52A0\u5165\u300A${n}\u300B${added} \u96C6,\u5F00\u59CB\u4E0B\u8F7D`, "success");
+      await $();
+      if (!s.snapshot.running) await le("start");
+    } else {
+      // added == 0 and no error: backend deduped it (already queued on disk but
+      // not yet in this session's snapshot) or found no episodes.
+      const ep = String(e.episodes || "").match(/\d+/)?.[0] || "";
+      showNotice(ep ? `\u300A${n}\u300B\u672A\u89E3\u6790\u5230\u53EF\u4E0B\u8F7D\u5206\u96C6` : `\u300A${n}\u300B\u53EF\u80FD\u5DF2\u5728\u961F\u5217`, "info");
+    }
   })), document.querySelectorAll(".poster img").forEach((t) => t.addEventListener("error", () => {
     t.closest(".poster")?.classList.remove("has-cover"), t.remove();
   }, { once: true })), document.querySelectorAll("input").forEach((t) => t.addEventListener("keydown", (e) => {
@@ -1433,11 +1473,25 @@ async function le(t) {
   if (t === "enqueue") {
     const e = document.querySelector("#queue-raw, #home-raw")?.value || "";
     if (!e.trim()) {
-      s.notice = "\u8BF7\u5148\u7C98\u8D34\u5206\u4EAB\u94FE\u63A5\u6216\u77ED\u5267 ID";
+      showNotice("请先粘贴分享链接或短剧 ID", "danger");
       return;
     }
     const i = await S("enqueue", { raw: e });
-    s.view = "tasks", await $(), Number(i?.added || 0) > 0 && !s.snapshot.running && await le("start");
+    if (i?.errors?.length) {
+      showNotice(`加入失败：${i.errors.join("；")}`, "danger");
+      return;
+    }
+    const added = Number(i?.added || 0);
+    if (added > 0) {
+      showNotice(`已加入 ${added} 集，开始下载`, "success");
+      s.view = "tasks", await $();
+      if (!s.snapshot.running) await le("start");
+    } else {
+      showNotice("未识别到新的分集，可能已在队列", "info");
+      await $();
+    }
+    const input = document.querySelector("#queue-raw, #home-raw");
+    if (input && added > 0) input.value = "";
     return;
   }
   if (t === "start") {
@@ -1445,11 +1499,11 @@ async function le(t) {
     s.starting = true, vt();
     const e = await S("start");
     if (!e) {
-      s.notice = "\u542F\u52A8\u5931\u8D25\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5", s.starting = false, m();
+      showNotice("启动失败，请稍后重试", "danger"), s.starting = false;
       return;
     }
     s.snapshot.running = e.started !== false || e.reason === "already-running";
-    s.notice = s.snapshot.running ? "" : "\u4E0B\u8F7D\u5F15\u64CE\u672A\u80FD\u542F\u52A8";
+    if (!s.snapshot.running) showNotice("下载引擎未能启动", "danger");
     s.starting = false, m();
     void $(false);
     return;
