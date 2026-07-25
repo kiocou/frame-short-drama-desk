@@ -15,6 +15,7 @@ import hashlib
 import binascii
 import subprocess
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
@@ -597,30 +598,67 @@ def stream_copy_video_with_ffmpeg(
         common + robust_input + decrypt + ["-i", video_url] + output_args,
         common + decrypt + ["-i", video_url] + output_args,
     ]
-    last_error = None
+    produced = False
+    last_error: Optional[Exception] = None
     try:
-        for command in commands:
-            partial.unlink(missing_ok=True)
+        # Fast path: parallel segmented download saturates bandwidth far better
+        # than ffmpeg's single pull, then ffmpeg only has to decrypt+copy a
+        # local file. Skipped silently when the CDN lacks Range support.
+        local_source_ready = False
+        try:
+            if download_video_to_file_concurrent(video_url, source):
+                local_source_ready = True
+        except Exception as exc:
+            print(f"[download] concurrent_fetch_failed error={exc}")
+
+        if local_source_ready:
+            local_command = common + decrypt + ["-i", str(source)] + output_args
             try:
-                _run_ffmpeg(command, partial)
+                _run_ffmpeg(local_command, partial)
                 partial.replace(filepath)
-                break
+                produced = True
             except FileNotFoundError as exc:
                 raise FileNotFoundError(f"FFmpeg executable not found: {ffmpeg_bin}") from exc
             except (subprocess.CalledProcessError, RuntimeError) as exc:
+                print(f"[download] local_copy_failed error={_ffmpeg_error_text(exc)}")
                 last_error = exc
-        else:
+
+        # Fall back to ffmpeg pulling the remote stream directly (with reconnect,
+        # then plain) when the segmented download was not possible or its local
+        # copy step failed.
+        if not produced:
+            for command in commands:
+                partial.unlink(missing_ok=True)
+                try:
+                    _run_ffmpeg(command, partial)
+                    partial.replace(filepath)
+                    produced = True
+                    last_error = None
+                    break
+                except FileNotFoundError as exc:
+                    raise FileNotFoundError(f"FFmpeg executable not found: {ffmpeg_bin}") from exc
+                except (subprocess.CalledProcessError, RuntimeError) as exc:
+                    last_error = exc
+
+        # Last resort: single-connection download then local copy.
+        if not produced:
             download_video_to_file(video_url, source)
             local_command = common + decrypt + ["-i", str(source)] + output_args
             try:
                 _run_ffmpeg(local_command, partial)
                 partial.replace(filepath)
+                produced = True
             except FileNotFoundError as exc:
                 raise FileNotFoundError(f"FFmpeg executable not found: {ffmpeg_bin}") from exc
             except (subprocess.CalledProcessError, RuntimeError) as exc:
                 raise RuntimeError(
                     f"FFmpeg could not process the downloaded video: {_ffmpeg_error_text(exc)}"
                 ) from exc
+
+        if not produced:
+            raise RuntimeError(
+                f"FFmpeg could not produce the video: {_ffmpeg_error_text(last_error) if last_error else 'unknown'}"
+            )
     finally:
         partial.unlink(missing_ok=True)
         source.unlink(missing_ok=True)
@@ -680,6 +718,131 @@ def download_video_to_file(video_url: str, target: Path) -> None:
     except Exception:
         target.unlink(missing_ok=True)
         raise
+
+
+def _probe_range_support(video_url: str, headers: Dict[str, str]) -> Tuple[bool, int]:
+    """Return (supports_range_requests, content_length) for a media URL.
+
+    A lightweight HEAD (falling back to a 0-byte-range GET) tells us whether
+    the CDN accepts Range requests — the precondition for parallel segmented
+    download. content_length is -1 when unknown.
+    """
+    session = get_http_session()
+    try:
+        head = session.head(video_url, headers=headers, timeout=15, allow_redirects=True)
+        if head.status_code == 200:
+            accept = (head.headers.get("accept-ranges") or "").lower()
+            length = head.headers.get("content-length")
+            return (accept == "bytes" or _safe_int(length) > 0), _safe_int(length)
+    except Exception:
+        pass
+    # Some CDNs reject HEAD; probe with a 1-byte range GET instead.
+    try:
+        probe_headers = dict(headers)
+        probe_headers["Range"] = "bytes=0-0"
+        probe = session.get(video_url, headers=probe_headers, timeout=15, stream=True, allow_redirects=True)
+        probe.close()
+        if probe.status_code in (206, 200):
+            length = probe.headers.get("content-range")
+            if length and "/" in length:
+                return True, _safe_int(length.split("/")[-1])
+            return probe.status_code == 206, _safe_int(probe.headers.get("content-length"))
+    except Exception:
+        pass
+    return False, -1
+
+
+def _safe_int(value: Any) -> int:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return -1
+
+
+def _download_range(video_url: str, headers: Dict[str, str], start: int, end: int, part_path: Path) -> int:
+    """Download one byte range [start, end] inclusive into ``part_path``."""
+    range_headers = dict(headers)
+    range_headers["Range"] = f"bytes={start}-{end}"
+    response = get_http_session().get(video_url, headers=range_headers, timeout=120, stream=True, allow_redirects=True)
+    response.raise_for_status()
+    with part_path.open("wb") as output:
+        for chunk in response.iter_content(chunk_size=256 * 1024):
+            if chunk:
+                output.write(chunk)
+    written = part_path.stat().st_size
+    if written == 0:
+        raise RuntimeError(f"empty range segment {start}-{end}")
+    return written
+
+
+def download_video_to_file_concurrent(
+    video_url: str, target: Path, segments: int = 4, max_attempts: int = 2
+) -> bool:
+    """Download a media file using parallel HTTP Range requests.
+
+    Much faster than ffmpeg's single-connection stream copy on high-bandwidth
+    links because it saturates the pipe with ``segments`` concurrent fetches.
+    Falls back gracefully: returns False (caller should retry with the plain
+    single-stream path) when the server does not advertise Range support or the
+    size is unknown.
+    """
+    headers = {
+        "User-Agent": "com.phoenix.read/71332",
+        "Referer": "https://novel.snssdk.com/",
+    }
+    supports_range, total = _probe_range_support(video_url, headers)
+    if not supports_range or total <= 0 or segments <= 1:
+        return False
+
+    # Bound segment count so each part is at least ~512KB; tiny files need no
+    # parallelism and a huge segment count just adds connection overhead.
+    segments = max(1, min(segments, total // (512 * 1024) or 1))
+    if segments == 1:
+        return False
+
+    seg_size = total // segments
+    ranges: List[Tuple[int, int]] = []
+    for index in range(segments):
+        start = index * seg_size
+        end = total - 1 if index == segments - 1 else start + seg_size - 1
+        ranges.append((start, end))
+
+    part_paths = [target.with_suffix(f".part{index}.mp4") for index in range(segments)]
+    for part in part_paths:
+        part.unlink(missing_ok=True)
+
+    download_start = time.perf_counter()
+    try:
+        with ThreadPoolExecutor(max_workers=segments, thread_name_prefix="range") as pool:
+            futures = {
+                pool.submit(_download_range, video_url, headers, start, end, part_paths[index]): index
+                for index, (start, end) in enumerate(ranges)
+            }
+            for future in as_completed(futures):
+                future.result()  # propagate errors
+        # Stitch segments in order and verify the byte count matches.
+        target.unlink(missing_ok=True)
+        written = 0
+        with target.open("wb") as output:
+            for part in part_paths:
+                with part.open("rb") as piece:
+                    while True:
+                        chunk = piece.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        output.write(chunk)
+                        written += len(chunk)
+        if written != total:
+            raise RuntimeError(f"segmented download size mismatch: {written} != {total}")
+    finally:
+        for part in part_paths:
+            part.unlink(missing_ok=True)
+
+    if not target.is_file() or target.stat().st_size == 0:
+        raise RuntimeError("segmented download produced an empty media file")
+    seconds = time.perf_counter() - download_start
+    print(f"[timing] concurrent_download_seconds={seconds:.3f} segments={segments} bytes={total}")
+    return True
 
 
 def download_video_bytes(video_url: str) -> bytes:

@@ -486,7 +486,7 @@ def worker():
     RUNNING_FILE.write_text(str(os.getpid()), encoding="ascii")
     try:
         tasks, _ = load_tasks(desktop_state)
-        workers = min(8, max(2, int(config.get("download_workers", 4) or 4)))
+        workers = min(8, max(2, int(config.get("download_workers", 6) or 6)))
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="frame-episode") as pool:
             while not PAUSE_FILE.exists():
                 claimed = desktop_state.claim_waiting_tasks(tasks, workers)

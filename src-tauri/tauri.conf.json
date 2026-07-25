@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "FRAME 短剧工作台",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "identifier": "cn.frame.shortdrama",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run build:bridge && npm run build",
     "frontendDist": "../ui-dist"
   },
   "app": {
@@ -41,6 +41,6 @@
     "active": true,
     "targets": ["nsis"],
     "icon": ["../static/assets/app_icon.ico"],
-    "resources": ["../config.example.json", "../tauri_bridge.py", "../1.py", "../app.py", "../desktop_downloads.py", "../desktop_state.py", "../liushen", "../插件", "../ffmpeg.exe"]
+    "resources": ["../dist/tauri_bridge", "../插件", "../ffmpeg.exe"]
   }
 }

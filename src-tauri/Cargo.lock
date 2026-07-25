@@ -809,7 +809,7 @@ dependencies = [
 
 [[package]]
 name = "frame-short-drama-desk"
-version = "2.2.0"
+version = "2.2.1"
 dependencies = [
  "serde",
  "serde_json",
